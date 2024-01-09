@@ -13,6 +13,7 @@ class camera {
 public:
 	double aspect_ratio = 1.0;
 	int image_width = 100;
+	int samples_per_pixel = 10;
 
 	void render(const hittable& world) {
 		initialize();
@@ -21,12 +22,14 @@ public:
 		for (int j = 0; j < image_height; j++) {
 			std::clog << "\rScanlines remaining: "<< (image_height - j) << ' ' << std::flush;
 			for (int i = 0; i < image_width; i++) {
-				auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
-				auto ray_direction = pixel_center - center;
-				ray r(center, ray_direction);
-
-				color pixel_color = ray_color(r, world);
-				write_color(std::cout, pixel_color);
+				
+				color pixel_color = color(0, 0, 0);
+				for(int sample = 0; sample < samples_per_pixel; sample++)
+				{
+					ray r = get_ray(i, j);
+					pixel_color += ray_color(r, world);
+				}
+				write_color(std::cout, pixel_color, samples_per_pixel);
 			}
 		}
 		std::clog << "\rDone.		\n";
@@ -54,18 +57,35 @@ private:
 		auto viewport_u = vec3(viewport_width, 0, 0);
 		auto viewport_v = vec3(0, -viewport_height, 0);
 
-		auto pixel_delta_u = viewport_u / image_width;
-		auto pixel_delta_v = viewport_v / image_height;
+		pixel_delta_u = viewport_u / image_width;
+		pixel_delta_v = viewport_v / image_height;
 
 		auto viewport_upper_left = camera_center - vec3(0, 0, focal_length) - viewport_u / 2 - viewport_v / 2;
-		auto pixel100_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+		pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+	}
+
+	ray get_ray(int i, int j) const{
+		auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+		auto pixel_sample = pixel_center + pixel_sample_square();
+
+		auto ray_origin = center;
+		auto ray_direction = pixel_sample - ray_origin;
+
+		return ray(ray_origin, ray_direction);
+	}
+
+	vec3 pixel_sample_square() const {
+		auto px = -0.5 + random_double();
+		auto py = -0.5 + random_double();
+		return (px * pixel_delta_u) + (py * pixel_delta_v);
 	}
 
 	color ray_color(const ray& r, const hittable& world) const {
 		hit_record rec;
 
 		if (world.hit(r, interval(0, infinity), rec)) {
-			return 0.5 * (rec.normal + color(1, 1, 1));
+			vec3 direction = random_on_hemisphere(rec.normal);
+			return 0.5 * ray_color(ray(rec.p, direction), world);
 		}
 
 		vec3 unit_direction = unit_vector(r.direction());
